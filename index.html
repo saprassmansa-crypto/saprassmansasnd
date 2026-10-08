@@ -116,9 +116,22 @@ function logout(){ S = null; sessionStorage.removeItem("sapras_session"); $("app
 //================= NAV =================
 const MENU = [
   { id:"dashboard", label:"Dashboard", icon:"layout-dashboard", roles:null },
-  { id:"aset", label:"Data Aset", icon:"box", roles:null },
-  { id:"kib", label:"KIB", icon:"layers", roles:null },
-  { id:"kir", label:"KIR", icon:"door-open", roles:null },
+  { id:"aset", label:"Aset", icon:"box", roles:null, group:true, children:[
+    {id:"aset-data", label:"Data Aset", action:"aset"},
+    {id:"aset-import", label:"Import File", action:"aset-import"},
+    {id:"aset-template", label:"Template", action:"aset-template"}
+  ]},
+  { id:"kib", label:"KIB", icon:"layers", roles:null, group:true, children:[
+    {id:"kibA", label:"KIB A – Tanah", action:"kibA"},
+    {id:"kibB", label:"KIB B – Peralatan dan Mesin", action:"kibB"},
+    {id:"kibC", label:"KIB C – Gedung dan Bangunan", action:"kibC"},
+    {id:"kibD", label:"KIB D – Jalan, Irigasi dan Jaringan", action:"kibD"},
+    {id:"kibE", label:"KIB E – Aset Tetap Lainnya", action:"kibE"},
+    {id:"kibF", label:"KIB F – Konstruksi Dalam Pengerjaan", action:"kibF"}
+  ]},
+  { id:"kir", label:"KIR", icon:"door-open", roles:null, group:true, children:[
+    {id:"kir-data", label:"Kartu Inventaris Ruangan", action:"kir"}
+  ]},
   { id:"kategori", label:"Kategori", icon:"tags", roles:null },
   { id:"lokasi", label:"Lokasi", icon:"map-pin", roles:null },
   { id:"mutasi", label:"Mutasi Aset", icon:"move", roles:null },
@@ -135,22 +148,47 @@ let activeTab = "dashboard";
 function canWrite(){ return S.user.role === "ADMIN" || S.user.role === "PETUGAS"; }
 function isAdmin(){ return S.user.role === "ADMIN"; }
 
+function groupButton(m, mobile=false){
+  const base = mobile
+    ? "flex flex-col items-center justify-center min-w-[74px] py-2 text-blue-200 text-[9px] font-bold gap-1"
+    : "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-blue-100 hover:bg-white/10 transition";
+  return `<button type="button" onclick="toggleMenuGroup('${m.id}')" class="${base}"><i data-lucide="${m.icon}" class="w-4 h-4"></i><span>${m.label}</span></button>`;
+}
+function renderGroupChildren(m, mobile=false){
+  const wrap = mobile ? `id="mob-group-${m.id}" class="hidden flex-col bg-blue-950/60"` : `id="group-${m.id}" class="hidden pl-3 mt-1 space-y-1"`;
+  return `<div ${wrap}>${m.children.map(c=>`<button type="button" onclick="switchTab('${c.action}')" id="${mobile?'mnav-':'nav-'}${c.id}" class="${mobile?'flex items-center gap-2 px-3 py-2 min-w-full text-left text-[10px] text-blue-100':'w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-blue-200 hover:bg-white/10'}"><span class="opacity-60">└</span>${c.label}</button>`).join('')}</div>`;
+}
 function renderNav(){
   const items = MENU.filter(m => !m.roles || m.roles.includes(S.user.role));
-  $("nav").innerHTML = items.map(m => `<button onclick="switchTab('${m.id}')" id="nav-${m.id}" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-blue-100 hover:bg-white/10 transition"><i data-lucide="${m.icon}" class="w-4 h-4"></i>${m.label}</button>`).join("");
-  $("mobnav").innerHTML = items.map(m => `<button onclick="switchTab('${m.id}')" id="mnav-${m.id}" class="flex flex-col items-center justify-center min-w-[64px] py-2 text-blue-200 text-[9px] font-bold gap-1"><i data-lucide="${m.icon}" class="w-4 h-4"></i>${m.label}</button>`).join("");
+  $("nav").innerHTML = items.map(m => m.group ? groupButton(m)+renderGroupChildren(m) : `<button type="button" onclick="switchTab('${m.id}')" id="nav-${m.id}" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-blue-100 hover:bg-white/10 transition"><i data-lucide="${m.icon}" class="w-4 h-4"></i>${m.label}</button>`).join("");
+  $("mobnav").innerHTML = items.map(m => m.group ? groupButton(m,true)+renderGroupChildren(m,true) : `<button type="button" onclick="switchTab('${m.id}')" id="mnav-${m.id}" class="flex flex-col items-center justify-center min-w-[74px] py-2 text-blue-200 text-[9px] font-bold gap-1"><i data-lucide="${m.icon}" class="w-4 h-4"></i>${m.label}</button>`).join("");
   icons();
+}
+function toggleMenuGroup(id){
+  const a=$("group-"+id), b=$("mob-group-"+id);
+  if(a) a.classList.toggle("hidden");
+  if(b) b.classList.toggle("hidden");
 }
 
 function switchTab(tab){
   activeTab = tab;
-  document.querySelectorAll('[id^="nav-"],[id^="mnav-"]').forEach(b => b.className = b.className.replace(" bg-white/20"," ").replace(" text-white"," text-blue-100").trim());
+  document.querySelectorAll('[id^="nav-"],[id^="mnav-"]').forEach(b => b.className = b.className.replace(" bg-white/20","").replace(" text-white"," text-blue-100").trim());
   const navBtn = $("nav-"+tab), mBtn = $("mnav-"+tab);
-  if(navBtn) navBtn.className = "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-white/20 text-white transition";
-  if(mBtn) mBtn.className = "flex flex-col items-center justify-center min-w-[64px] py-2 text-white text-[9px] font-bold gap-1";
-  const titles = { dashboard:"Dashboard", aset:"Data Aset", kategori:"Kategori Barang", lokasi:"Data Lokasi", mutasi:"Mutasi Aset", peminjaman:"Peminjaman Aset", pemeliharaan:"Pemeliharaan Aset", penghapusan:"Usulan Penghapusan", laporan:"Laporan", pengguna:"Manajemen Pengguna", pengaturan:"Pengaturan Sekolah", sinkron:"Sinkronisasi Database", kib:"KIB – Kartu Inventaris Barang", kir:"KIR – Kartu Inventaris Ruangan" };
+  if(navBtn) navBtn.className += " bg-white/20 text-white";
+  if(mBtn) mBtn.className += " bg-white/20 text-white";
+  const titles = {
+    dashboard:"Dashboard", aset:"Data Aset", "aset-import":"Import Data Aset", "aset-template":"Template Import Aset",
+    kibA:"KIB A – Tanah", kibB:"KIB B – Peralatan dan Mesin", kibC:"KIB C – Gedung dan Bangunan",
+    kibD:"KIB D – Jalan, Irigasi dan Jaringan", kibE:"KIB E – Aset Tetap Lainnya", kibF:"KIB F – Konstruksi Dalam Pengerjaan",
+    kir:"KIR – Kartu Inventaris Ruangan", kategori:"Kategori Barang", lokasi:"Data Lokasi", mutasi:"Mutasi Aset",
+    peminjaman:"Peminjaman Aset", pemeliharaan:"Pemeliharaan Aset", penghapusan:"Usulan Penghapusan", laporan:"Laporan",
+    pengguna:"Manajemen Pengguna", pengaturan:"Pengaturan Sekolah", sinkron:"Sinkronisasi Database"
+  };
   $("hdr-title").textContent = titles[tab] || "Dashboard";
   $("hdr-sub").textContent = D.settings.NamaSekolah || "SMA Negeri 1 Seunuddon";
+  if(tab.startsWith("kib") && /^kib[A-F]$/.test(tab)) return viewKIB(tab.slice(-1));
+  if(tab === "aset-import") { viewAset(); viewAsetTab("import"); return; }
+  if(tab === "aset-template") { viewAset(); viewAsetTab("template"); return; }
   RENDER[tab] ? RENDER[tab]() : $("view").innerHTML = "";
 }
 
@@ -285,7 +323,7 @@ function formAset(id){
 async function saveAset(id){
   const kat = D.categories.find(x=>x.ID===$("f-kat").value), lok = D.locations.find(x=>x.ID===$("f-lok").value);
   if(!$("f-nama").value.trim() || !kat || !lok){ toast("Nama, kategori, dan lokasi wajib diisi.", true); return; }
-  const asset = { KodeBarang: $("f-kode").value.trim(), NamaBarang: $("f-nama").value.trim(), KategoriID: kat.ID, Kategori: kat.NamaKategori, LokasiID: lok.ID, Lokasi: lok.NamaLokasi, Jumlah: $("f-jml").value, Satuan: $("f-sat").value, Kondisi: $("f-kon").value, TahunPerolehan: $("f-thn").value, SumberDana: $("f-dana").value, HargaPerolehan: $("f-harga").value, Keterangan: $("f-ket").value.trim() };
+  const asset = { KodeBarang: $("f-kode").value.trim(), NamaBarang: $("f-nama").value.trim(), KategoriID: kat.ID, Kategori: kat.NamaKategori, LokasiID: lok.ID, Lokasi: lok.NamaLokasi, Jumlah: $("f-jml").value, Satuan: $("f-sat").value, Kondisi: $("f-kon").value, TahunPerolehan: $("f-thn").value, SumberDana: $("f-dana").value, HargaPerolehan: $("f-harga").value, Keterangan: $("f-ket").value.trim(), KIB: $("f-kib").value };
   if(id) asset.ID = id;
   loading(true, "Menyimpan...");
   try {
@@ -482,8 +520,8 @@ function filteredRows(f){return D.assets.filter(a=>a.Status!=='Dihapus' && (!f.k
 function viewLaporan(){
   $("view").innerHTML=filterControls('lap')+`<div class="flex justify-between mb-3 noprint"><span id="lap-count" class="text-sm text-slate-500"></span><button onclick="window.print()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">🖨 Cetak Laporan</button></div><div id="lap-print" class="bg-white rounded-2xl p-6">${reportHeader('LAPORAN DATA INVENTARIS SARANA DAN PRASARANA','')}</div>`; refreshReport('lap'); icons();}
 function refreshReport(prefix){const rows=filteredRows(getReportFilters(prefix)); if(prefix==='lap'){$('lap-count').textContent=rows.length+' aset akan dicetak.';$('lap-print').innerHTML=reportHeader('LAPORAN DATA INVENTARIS SARANA DAN PRASARANA','')+`<table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border">No</th><th class="p-2 border">Kode</th><th class="p-2 border">Nama Barang</th><th class="p-2 border">Kategori</th><th class="p-2 border">KIB</th><th class="p-2 border">Lokasi</th><th class="p-2 border">Jumlah</th><th class="p-2 border">Kondisi</th><th class="p-2 border">Nilai</th></tr></thead><tbody>${rows.map((a,i)=>`<tr><td class="p-2 border">${i+1}</td><td class="p-2 border">${esc(a.KodeBarang)}</td><td class="p-2 border">${esc(a.NamaBarang)}</td><td class="p-2 border">${esc(a.Kategori)}</td><td class="p-2 border">${esc(a.KIB||'-')}</td><td class="p-2 border">${esc(a.Lokasi)}</td><td class="p-2 border">${esc(a.Jumlah)} ${esc(a.Satuan||'')}</td><td class="p-2 border">${esc(a.Kondisi)}</td><td class="p-2 border text-right">${(Number(a.HargaPerolehan)||0).toLocaleString('id-ID')}</td></tr>`).join('')}</tbody></table>${reportSignature()}`;}}
-function viewKIB(){ $("view").innerHTML=filterControls('kibv')+`<div class="flex justify-end mb-3 noprint"><button onclick="window.print()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">🖨 Cetak KIB</button></div><div id="kib-print" class="bg-white rounded-2xl p-6"></div>`; refreshKIB(); }
-function refreshKIB(){const rows=filteredRows(getReportFilters('kibv')); $('kib-print').innerHTML=reportHeader('KARTU INVENTARIS BARANG (KIB)',`Data aset terfilter: ${rows.length} baris`)+`<table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border">No</th><th class="p-2 border">KIB</th><th class="p-2 border">Kode</th><th class="p-2 border">Nama Barang</th><th class="p-2 border">Merk/Type</th><th class="p-2 border">Tahun</th><th class="p-2 border">Jumlah</th><th class="p-2 border">Nilai</th><th class="p-2 border">Lokasi</th><th class="p-2 border">Kondisi</th></tr></thead><tbody>${rows.map((a,i)=>`<tr><td class="p-2 border">${i+1}</td><td class="p-2 border">${esc(a.KIB||'-')}</td><td class="p-2 border">${esc(a.KodeBarang)}</td><td class="p-2 border">${esc(a.NamaBarang)}</td><td class="p-2 border">${esc((a.Merk||'')+' '+(a.Type||''))}</td><td class="p-2 border">${esc(a.TahunPerolehan)}</td><td class="p-2 border">${esc(a.Jumlah)}</td><td class="p-2 border text-right">${(Number(a.HargaPerolehan)||0).toLocaleString('id-ID')}</td><td class="p-2 border">${esc(a.Lokasi)}</td><td class="p-2 border">${esc(a.Kondisi)}</td></tr>`).join('')}</tbody></table>${reportSignature()}`; icons();}
+function viewKIB(code){ $("view").innerHTML=filterControls('kibv')+`<div class="flex justify-end mb-3 noprint"><button onclick="window.print()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">🖨 Cetak KIB</button></div><div id="kib-print" class="bg-white rounded-2xl p-6"></div>`; if(code && $("kibv-kib")) $("kibv-kib").value=code; refreshKIB(); }
+function refreshKIB(){const f=getReportFilters('kibv'); const rows=filteredRows(f); const label=f.kib&&f.kib!=='Semua'?`KIB ${f.kib}`:'SEMUA KIB'; $('kib-print').innerHTML=reportHeader(`KARTU INVENTARIS BARANG – ${label}`,`Data aset terfilter: ${rows.length} baris`)+`<table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border">No</th><th class="p-2 border">KIB</th><th class="p-2 border">Kode</th><th class="p-2 border">Nama Barang</th><th class="p-2 border">Merk/Type</th><th class="p-2 border">Tahun</th><th class="p-2 border">Jumlah</th><th class="p-2 border">Nilai</th><th class="p-2 border">Lokasi</th><th class="p-2 border">Kondisi</th></tr></thead><tbody>${rows.map((a,i)=>`<tr><td class="p-2 border">${i+1}</td><td class="p-2 border">${esc(a.KIB||'-')}</td><td class="p-2 border">${esc(a.KodeBarang)}</td><td class="p-2 border">${esc(a.NamaBarang)}</td><td class="p-2 border">${esc((a.Merk||'')+' '+(a.Type||''))}</td><td class="p-2 border">${esc(a.TahunPerolehan)}</td><td class="p-2 border">${esc(a.Jumlah)}</td><td class="p-2 border text-right">${(Number(a.HargaPerolehan)||0).toLocaleString('id-ID')}</td><td class="p-2 border">${esc(a.Lokasi)}</td><td class="p-2 border">${esc(a.Kondisi)}</td></tr>`).join('')}</tbody></table>${reportSignature()}`; icons();}
 function viewKIR(){ $("view").innerHTML=filterControls('kirv')+`<div class="flex justify-end mb-3 noprint"><button onclick="window.print()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">🖨 Cetak KIR</button></div><div id="kir-print" class="bg-white rounded-2xl p-6"></div>`; refreshKIR(); }
 function refreshKIR(){const rows=filteredRows(getReportFilters('kirv')); const groups={}; rows.forEach(a=>(groups[a.Lokasi||'Tanpa Lokasi']??=[]).push(a)); let html=reportHeader('KARTU INVENTARIS RUANGAN (KIR)',''); Object.entries(groups).forEach(([lok,items])=>{html+=`<div class="mb-8"><h3 class="font-black text-sm mb-2">RUANGAN/LOKASI: ${esc(lok)}</h3><table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border">No</th><th class="p-2 border">Kode Barang</th><th class="p-2 border">Nama Barang</th><th class="p-2 border">Merk/Type</th><th class="p-2 border">Tahun</th><th class="p-2 border">Jumlah</th><th class="p-2 border">Kondisi</th><th class="p-2 border">Keterangan</th></tr></thead><tbody>${items.map((a,i)=>`<tr><td class="p-2 border">${i+1}</td><td class="p-2 border">${esc(a.KodeBarang)}</td><td class="p-2 border">${esc(a.NamaBarang)}</td><td class="p-2 border">${esc((a.Merk||'')+' '+(a.Type||''))}</td><td class="p-2 border">${esc(a.TahunPerolehan)}</td><td class="p-2 border">${esc(a.Jumlah)}</td><td class="p-2 border">${esc(a.Kondisi)}</td><td class="p-2 border">${esc(a.Keterangan||'')}</td></tr>`).join('')}</tbody></table></div>`}); html+=reportSignature(); $('kir-print').innerHTML=html; icons();}
 
