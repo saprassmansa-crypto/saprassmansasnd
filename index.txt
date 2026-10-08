@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAPRAS - SMA Negeri 1 Seunuddon</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;background:#f1f5f9;color:#1e293b;margin:0}
+  .hide{display:none!important}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+  @media print{.noprint{display:none!important} body{background:#fff}}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login" class="min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8">
+    <div class="w-14 h-14 bg-blue-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-white"><i data-lucide="building-2" class="w-7 h-7"></i></div>
+    <h1 class="text-center font-black text-xl text-slate-800">SAPRAS</h1>
+    <p class="text-center text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">SMA Negeri 1 Seunuddon</p>
+    <label class="text-[11px] font-bold text-slate-500 uppercase">Username</label>
+    <input id="lg-user" class="w-full mt-1 mb-3 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600" placeholder="admin">
+    <label class="text-[11px] font-bold text-slate-500 uppercase">Password</label>
+    <input id="lg-pass" type="password" class="w-full mt-1 mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-600" placeholder="••••••••">
+    <div id="lg-msg" class="text-xs text-red-600 font-bold mb-3 text-center"></div>
+    <button onclick="doLogin()" class="w-full bg-blue-800 text-white font-black py-3 rounded-xl hover:bg-blue-900 transition">MASUK</button>
+    <p class="text-center text-[10px] text-slate-400 mt-5">Akun awal: admin/admin123, petugas/petugas123, kepsek/kepsek123</p>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hide min-h-screen flex">
+  <aside class="w-64 bg-blue-900 text-white flex-col p-5 hidden lg:flex noprint">
+    <div class="flex items-center gap-3 mb-8">
+      <div class="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center"><i data-lucide="building-2" class="w-5 h-5"></i></div>
+      <div><h1 class="font-black text-lg leading-tight">SAPRAS</h1><p class="text-[10px] text-blue-200 uppercase tracking-widest">Sarana Prasarana</p></div>
+    </div>
+    <nav id="nav" class="flex-1 space-y-1 overflow-y-auto"></nav>
+    <div class="pt-4 border-t border-white/10 mt-4">
+      <p class="text-xs font-bold" id="who"></p>
+      <button onclick="logout()" class="mt-2 w-full bg-red-600/90 hover:bg-red-600 text-xs font-black py-2 rounded-lg">KELUAR</button>
+    </div>
+  </aside>
+
+  <nav id="mobnav" class="lg:hidden fixed bottom-0 left-0 right-0 bg-blue-900 z-40 flex overflow-x-auto noprint"></nav>
+
+  <main class="flex-1 overflow-y-auto h-screen pb-20 lg:pb-0">
+    <header class="bg-white border-b border-slate-200 px-5 py-4 flex justify-between items-center sticky top-0 z-30 noprint">
+      <div><p class="text-[11px] font-bold text-blue-700 uppercase tracking-widest" id="hdr-sub">SMA Negeri 1 Seunuddon</p><h2 class="text-xl font-black text-slate-800" id="hdr-title">Dashboard</h2></div>
+      <button onclick="logout()" class="lg:hidden text-slate-400"><i data-lucide="log-out"></i></button>
+    </header>
+    <div id="view" class="p-4 md:p-6 max-w-6xl mx-auto"></div>
+  </main>
+</div>
+
+<!-- ============ MODAL GENERIC ============ -->
+<div id="modal" class="hide fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 noprint">
+  <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" id="modal-body"></div>
+</div>
+
+<script>
+//================= CONFIG =================
+const GAS_URL = "PASTE_URL_WEBAPP_GOOGLE_APPS_SCRIPT_ANDA_DI_SINI";
+
+let S = JSON.parse(sessionStorage.getItem("sapras_session") || "null");
+let D = { settings:{}, assets:[], categories:[], locations:[], mutations:[], loans:[], maintenance:[], disposals:[], dashboard:{} };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const rupiah = n => "Rp " + (Number(n)||0).toLocaleString("id-ID");
+const icons = () => { try { lucide.createIcons(); } catch(e){} };
+
+function toast(msg, isError){ Swal.mixin({toast:true,position:"top-end",showConfirmButton:false,timer:3000}).fire({icon:isError?"error":"success",title:msg}); }
+function loading(show, text){ if(show) Swal.fire({title:text||"Memproses...",allowOutsideClick:false,allowEscapeKey:false,showConfirmButton:false,didOpen:()=>Swal.showLoading()}); else Swal.close(); }
+function openModal(html){ $("modal-body").innerHTML = html; $("modal").classList.remove("hide"); icons(); }
+function closeModal(){ $("modal").classList.add("hide"); }
+
+//================= API =================
+async function api(action, extra){
+  if(GAS_URL.includes("PASTE_URL_WEBAPP")){ toast("GAS_URL belum diisi di index.html", true); throw new Error("config"); }
+  const body = Object.assign({ action: action, currentUserId: S?.user?.id, currentUserRole: S?.user?.role, currentUserName: S?.user?.nama }, extra||{});
+  let res, json;
+  try {
+    res = await fetch(GAS_URL, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(body) });
+    json = await res.json();
+  } catch(err){
+    toast("Gagal menghubungi server. Periksa URL Apps Script / koneksi internet.", true);
+    throw err;
+  }
+  if(json.status === "error"){ toast(json.message || "Terjadi kesalahan server.", true); throw new Error(json.message); }
+  return json;
+}
+
+//================= LOGIN / LOGOUT =================
+async function doLogin(){
+  const username = $("lg-user").value.trim(), password = $("lg-pass").value.trim();
+  if(!username || !password){ $("lg-msg").textContent = "Isi username dan password."; return; }
+  $("lg-msg").textContent = "";
+  loading(true, "Memeriksa akun...");
+  try {
+    const j = await api("login", { username, password });
+    S = { user: j.data };
+    sessionStorage.setItem("sapras_session", JSON.stringify(S));
+    await boot();
+  } catch(e){ $("lg-msg").textContent = e.message || "Gagal masuk."; }
+  loading(false);
+}
+function logout(){ S = null; sessionStorage.removeItem("sapras_session"); $("app").classList.add("hide"); $("login").classList.remove("hide"); }
+
+//================= NAV =================
+const MENU = [
+  { id:"dashboard", label:"Dashboard", icon:"layout-dashboard", roles:null },
+  { id:"aset", label:"Data Aset", icon:"box", roles:null },
+  { id:"kategori", label:"Kategori", icon:"tags", roles:null },
+  { id:"lokasi", label:"Lokasi", icon:"map-pin", roles:null },
+  { id:"mutasi", label:"Mutasi Aset", icon:"move", roles:null },
+  { id:"peminjaman", label:"Peminjaman", icon:"handshake", roles:null },
+  { id:"pemeliharaan", label:"Pemeliharaan", icon:"wrench", roles:null },
+  { id:"penghapusan", label:"Penghapusan", icon:"trash-2", roles:null },
+  { id:"laporan", label:"Laporan", icon:"file-text", roles:null },
+  { id:"pengguna", label:"Pengguna", icon:"users", roles:["ADMIN"] },
+  { id:"pengaturan", label:"Pengaturan", icon:"settings", roles:["ADMIN"] },
+  { id:"sinkron", label:"Sinkronisasi", icon:"refresh-cw", roles:null }
+];
+let activeTab = "dashboard";
+
+function canWrite(){ return S.user.role === "ADMIN" || S.user.role === "PETUGAS"; }
+function isAdmin(){ return S.user.role === "ADMIN"; }
+
+function renderNav(){
+  const items = MENU.filter(m => !m.roles || m.roles.includes(S.user.role));
+  $("nav").innerHTML = items.map(m => `<button onclick="switchTab('${m.id}')" id="nav-${m.id}" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-blue-100 hover:bg-white/10 transition"><i data-lucide="${m.icon}" class="w-4 h-4"></i>${m.label}</button>`).join("");
+  $("mobnav").innerHTML = items.map(m => `<button onclick="switchTab('${m.id}')" id="mnav-${m.id}" class="flex flex-col items-center justify-center min-w-[64px] py-2 text-blue-200 text-[9px] font-bold gap-1"><i data-lucide="${m.icon}" class="w-4 h-4"></i>${m.label}</button>`).join("");
+  icons();
+}
+
+function switchTab(tab){
+  activeTab = tab;
+  document.querySelectorAll('[id^="nav-"],[id^="mnav-"]').forEach(b => b.className = b.className.replace(" bg-white/20"," ").replace(" text-white"," text-blue-100").trim());
+  const navBtn = $("nav-"+tab), mBtn = $("mnav-"+tab);
+  if(navBtn) navBtn.className = "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-white/20 text-white transition";
+  if(mBtn) mBtn.className = "flex flex-col items-center justify-center min-w-[64px] py-2 text-white text-[9px] font-bold gap-1";
+  const titles = { dashboard:"Dashboard", aset:"Data Aset", kategori:"Kategori Barang", lokasi:"Data Lokasi", mutasi:"Mutasi Aset", peminjaman:"Peminjaman Aset", pemeliharaan:"Pemeliharaan Aset", penghapusan:"Usulan Penghapusan", laporan:"Laporan", pengguna:"Manajemen Pengguna", pengaturan:"Pengaturan Sekolah", sinkron:"Sinkronisasi Database" };
+  $("hdr-title").textContent = titles[tab] || "Dashboard";
+  $("hdr-sub").textContent = D.settings.NamaSekolah || "SMA Negeri 1 Seunuddon";
+  RENDER[tab] ? RENDER[tab]() : $("view").innerHTML = "";
+}
+
+//================= BOOT =================
+async function boot(){
+  $("login").classList.add("hide"); $("app").classList.remove("hide");
+  $("who").textContent = S.user.nama + " · " + S.user.role;
+  renderNav();
+  loading(true, "Memuat data dari Spreadsheet...");
+  try {
+    const j = await api("syncData");
+    D = j.data;
+  } catch(e) { /* toast sudah ditampilkan oleh api() */ }
+  loading(false);
+  switchTab("dashboard");
+}
+async function refreshAll(){ const j = await api("syncData"); D = j.data; }
+
+//================= DASHBOARD =================
+function viewDashboard(){
+  const d = D.dashboard || {};
+  const card = (icon,label,val,color) => `<div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100"><div class="w-9 h-9 rounded-xl flex items-center justify-center mb-2" style="background:${color}1a;color:${color}"><i data-lucide="${icon}" class="w-5 h-5"></i></div><p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">${label}</p><p class="text-2xl font-black text-slate-800">${val}</p></div>`;
+  const rows = o => Object.entries(o||{}).map(([k,v])=>`<div class="flex justify-between text-sm py-1.5 border-b border-slate-50"><span class="text-slate-500">${esc(k)}</span><b>${v}</b></div>`).join("") || '<p class="text-sm text-slate-400">Belum ada data.</p>';
+  $("view").innerHTML = `
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      ${card("box","Total Aset",d.totalAset||0,"#1e40af")}
+      ${card("check-circle","Kondisi Baik",d.kondisiBaik||0,"#059669")}
+      ${card("alert-triangle","Rusak Ringan",d.rusakRingan||0,"#d97706")}
+      ${card("x-circle","Rusak Berat",d.rusakBerat||0,"#dc2626")}
+      ${card("wallet","Total Nilai",rupiah(d.totalNilaiAset),"#7c3aed")}
+      ${card("tags","Kategori",d.jumlahKategori||0,"#0891b2")}
+      ${card("map-pin","Lokasi",d.jumlahLokasi||0,"#0891b2")}
+      ${card("handshake","Sedang Dipinjam",d.totalDipinjam||0,"#be123c")}
+    </div>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100"><h4 class="font-black text-sm text-slate-700 mb-2">Kondisi Aset</h4>${rows(d.charts && d.charts.byCondition)}</div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100"><h4 class="font-black text-sm text-slate-700 mb-2">Per Kategori</h4>${rows(d.charts && d.charts.byCategory)}</div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100"><h4 class="font-black text-sm text-slate-700 mb-2">Per Lokasi</h4>${rows(d.charts && d.charts.byLocation)}</div>
+    </div>`;
+  icons();
+}
+
+//================= ASET =================
+function viewAset(){
+  $("view").innerHTML = `
+    <div class="flex flex-wrap gap-2 mb-4 justify-between items-center">
+      <input id="q-aset" oninput="renderAsetList()" placeholder="🔍 Cari nama, kode, kategori, lokasi..." class="flex-1 min-w-[220px] p-3 bg-white border border-slate-200 rounded-xl outline-none">
+      ${canWrite() ? `<button onclick="formAset()" class="bg-blue-800 text-white font-black text-sm px-4 py-3 rounded-xl flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i>Tambah Aset</button>` : ""}
+    </div>
+    <div id="list-aset" class="space-y-2"></div>`;
+  renderAsetList(); icons();
+}
+function renderAsetList(){
+  const q = ($("q-aset").value||"").toLowerCase();
+  const rows = D.assets.filter(a => a.Status !== "Dihapus" && [a.NamaBarang,a.KodeBarang,a.Kategori,a.Lokasi].join(" ").toLowerCase().includes(q));
+  $("list-aset").innerHTML = rows.length ? rows.map(a => `
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 flex flex-wrap gap-3 justify-between items-start">
+      <div class="flex-1 min-w-[200px]">
+        <b class="text-slate-800">${esc(a.NamaBarang)}</b>
+        <span class="ml-2 text-[10px] font-black px-2 py-0.5 rounded-full ${a.Kondisi==='Baik'?'bg-green-100 text-green-700':a.Kondisi==='Rusak Ringan'?'bg-amber-100 text-amber-700':'bg-red-100 text-red-700'}">${esc(a.Kondisi)}</span>
+        ${a.Status==='Dipinjam'?'<span class="ml-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">DIPINJAM</span>':''}
+        <div class="text-xs text-slate-500 mt-1">Kode: ${esc(a.KodeBarang||'-')} · ${esc(a.Kategori)} · ${esc(a.Lokasi)} · Jml: ${esc(a.Jumlah)} ${esc(a.Satuan||'')}</div>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <button onclick="printBarcode('${esc(a.KodeBarang)}','${esc(a.NamaBarang)}')" class="text-xs font-bold bg-slate-100 px-3 py-2 rounded-lg">🖨 Barcode</button>
+        ${canWrite()?`<button onclick="formAset('${a.ID}')" class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-2 rounded-lg">Edit</button>`:""}
+        ${isAdmin()?`<button onclick="delAset('${a.ID}')" class="text-xs font-bold bg-red-50 text-red-700 px-3 py-2 rounded-lg">Hapus</button>`:""}
+      </div>
+    </div>`).join("") : `<div class="bg-white rounded-xl p-8 text-center text-slate-400 text-sm">Tidak ada data.</div>`;
+}
+function formAset(id){
+  const a = id ? D.assets.find(x=>x.ID===id) : {};
+  const opt = (arr,val,key) => arr.filter(x=>x.Status==="Aktif"||x.ID===val).map(x=>`<option value="${x.ID}" ${x.ID===val?'selected':''}>${esc(x[key])}</option>`).join("");
+  openModal(`
+    <h3 class="font-black text-lg mb-4">${id?'Edit':'Tambah'} Aset</h3>
+    <div class="space-y-3">
+      <div><label class="text-xs font-bold text-slate-500">Kode Barang</label><input id="f-kode" value="${esc(a.KodeBarang||'')}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1" placeholder="Otomatis jika kosong"></div>
+      <div><label class="text-xs font-bold text-slate-500">Nama Barang *</label><input id="f-nama" value="${esc(a.NamaBarang||'')}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-xs font-bold text-slate-500">Kategori *</label><select id="f-kat" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"><option value="">-Pilih-</option>${opt(D.categories,a.KategoriID,'NamaKategori')}</select></div>
+        <div><label class="text-xs font-bold text-slate-500">Lokasi *</label><select id="f-lok" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"><option value="">-Pilih-</option>${opt(D.locations,a.LokasiID,'NamaLokasi')}</select></div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div><label class="text-xs font-bold text-slate-500">Jumlah</label><input id="f-jml" type="number" value="${a.Jumlah||1}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>
+        <div><label class="text-xs font-bold text-slate-500">Satuan</label><input id="f-sat" value="${esc(a.Satuan||'Unit')}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>
+        <div><label class="text-xs font-bold text-slate-500">Kondisi</label><select id="f-kon" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"><option ${a.Kondisi==='Baik'?'selected':''}>Baik</option><option ${a.Kondisi==='Rusak Ringan'?'selected':''}>Rusak Ringan</option><option ${a.Kondisi==='Rusak Berat'?'selected':''}>Rusak Berat</option></select></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-xs font-bold text-slate-500">Tahun Perolehan</label><input id="f-thn" type="number" value="${a.TahunPerolehan||new Date().getFullYear()}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>
+        <div><label class="text-xs font-bold text-slate-500">Sumber Dana</label><input id="f-dana" value="${esc(a.SumberDana||'BOS')}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>
+      </div>
+      <div><label class="text-xs font-bold text-slate-500">Harga Perolehan (Rp)</label><input id="f-harga" type="number" value="${a.HargaPerolehan||0}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>
+      <div><label class="text-xs font-bold text-slate-500">Foto Aset</label><input id="f-foto" type="file" accept="image/*" class="w-full p-2 bg-slate-50 border rounded-xl mt-1"></div>
+      <div><label class="text-xs font-bold text-slate-500">Keterangan</label><textarea id="f-ket" class="w-full p-3 bg-slate-50 border rounded-xl mt-1" rows="2">${esc(a.Keterangan||'')}</textarea></div>
+      <div class="flex gap-2 pt-2"><button onclick="closeModal()" class="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100">Batal</button><button onclick="saveAset('${id||''}')" class="flex-[2] py-3 rounded-xl font-black text-white bg-blue-800">SIMPAN</button></div>
+    </div>`);
+}
+async function saveAset(id){
+  const kat = D.categories.find(x=>x.ID===$("f-kat").value), lok = D.locations.find(x=>x.ID===$("f-lok").value);
+  if(!$("f-nama").value.trim() || !kat || !lok){ toast("Nama, kategori, dan lokasi wajib diisi.", true); return; }
+  const asset = { KodeBarang: $("f-kode").value.trim(), NamaBarang: $("f-nama").value.trim(), KategoriID: kat.ID, Kategori: kat.NamaKategori, LokasiID: lok.ID, Lokasi: lok.NamaLokasi, Jumlah: $("f-jml").value, Satuan: $("f-sat").value, Kondisi: $("f-kon").value, TahunPerolehan: $("f-thn").value, SumberDana: $("f-dana").value, HargaPerolehan: $("f-harga").value, Keterangan: $("f-ket").value.trim() };
+  if(id) asset.ID = id;
+  loading(true, "Menyimpan...");
+  try {
+    const file = $("f-foto").files[0];
+    if(file){
+      const base64 = await fileToBase64(file);
+      const up = await api("uploadFile", { fileName: file.name, base64Data: base64, folderType: "Foto Aset" });
+      asset.FotoFileID = up.data.fileId; asset.FotoURL = up.data.fileUrl;
+    }
+    await api(id ? "updateAsset" : "saveAsset", { asset });
+    await refreshAll();
+    closeModal(); toast("Aset berhasil disimpan."); switchTab("aset");
+  } catch(e){} finally { loading(false); }
+}
+function fileToBase64(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); }); }
+async function delAset(id){
+  const c = await Swal.fire({ title:"Hapus aset ini?", icon:"warning", showCancelButton:true, confirmButtonText:"Ya, Hapus", confirmButtonColor:"#dc2626" });
+  if(!c.isConfirmed) return;
+  loading(true);
+  try { await api("deleteAsset", { id }); await refreshAll(); toast("Aset dihapus."); switchTab("aset"); } catch(e){} finally { loading(false); }
+}
+function printBarcode(kode, nama){
+  if(!kode){ toast("Aset ini belum punya kode barang.", true); return; }
+  const w = window.open("", "_blank", "width=420,height=340");
+  if(!w){ toast("Popup diblokir browser.", true); return; }
+  const html = "<!DOCTYPE html><html><head><title>Barcode</title>" +
+    "<script src='https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js'><\/script>" +
+    "<style>body{font-family:sans-serif;text-align:center;padding:24px}button{margin-top:16px;padding:10px 20px;border:0;border-radius:6px;background:#1e3a8a;color:#fff;font-weight:bold}@media print{button{display:none}}</style></head><body>" +
+    "<div style='font-weight:bold;margin-bottom:8px'>" + esc(nama||"") + "</div><svg id='bc'></svg>" +
+    "<div><button onclick='window.print()'>CETAK</button></div>" +
+    "<script>JsBarcode('#bc'," + JSON.stringify(String(kode)) + ",{format:'CODE128',width:2,height:60,fontSize:14,margin:8});<\/script></body></html>";
+  w.document.write(html); w.document.close();
+}
+
+//================= KATEGORI =================
+function viewKategori(){
+  $("view").innerHTML = `
+    ${isAdmin() ? `<div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 mb-4"><h4 class="font-black mb-3">Tambah Kategori</h4><div class="flex gap-2"><input id="nk" placeholder="Nama kategori" class="flex-1 p-3 bg-slate-50 border rounded-xl"><button onclick="addKategori()" class="bg-blue-800 text-white font-black px-5 rounded-xl">Simpan</button></div></div>`:""}
+    <div class="grid md:grid-cols-2 gap-2">${D.categories.map(c=>`<div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100"><b>${esc(c.NamaKategori)}</b><div class="text-xs text-slate-400">Kode: ${esc(c.KodeKategori)}</div></div>`).join("")}</div>`;
+}
+async function addKategori(){
+  const nama = $("nk").value.trim(); if(!nama) return;
+  loading(true);
+  try { await api("saveCategory", { category:{ NamaKategori: nama } }); await refreshAll(); toast("Kategori ditambahkan."); switchTab("kategori"); } catch(e){} finally { loading(false); }
+}
+
+//================= LOKASI =================
+function viewLokasi(){
+  $("view").innerHTML = `
+    ${isAdmin() ? `<div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 mb-4"><h4 class="font-black mb-3">Tambah Lokasi</h4>
+      <div class="grid md:grid-cols-2 gap-2 mb-2"><input id="nl" placeholder="Nama lokasi" class="p-3 bg-slate-50 border rounded-xl"><input id="ng" placeholder="Gedung" class="p-3 bg-slate-50 border rounded-xl"></div>
+      <div class="grid md:grid-cols-2 gap-2 mb-2"><input id="nlt" placeholder="Lantai" class="p-3 bg-slate-50 border rounded-xl"><input id="npj" placeholder="Penanggung Jawab" class="p-3 bg-slate-50 border rounded-xl"></div>
+      <button onclick="addLokasi()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl w-full">Simpan Lokasi</button></div>`:""}
+    <div class="grid md:grid-cols-2 gap-2">${D.locations.map(l=>`<div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100"><b>${esc(l.NamaLokasi)}</b><div class="text-xs text-slate-400">${esc(l.Gedung||'')} ${l.Lantai?('· Lt.'+esc(l.Lantai)):''} · PIC: ${esc(l.PenanggungJawab||'-')}</div></div>`).join("")}</div>`;
+}
+async function addLokasi(){
+  const nama = $("nl").value.trim(); if(!nama) return;
+  loading(true);
+  try { await api("saveLocation", { location:{ NamaLokasi:nama, Gedung:$("ng").value.trim(), Lantai:$("nlt").value.trim(), PenanggungJawab:$("npj").value.trim() } }); await refreshAll(); toast("Lokasi ditambahkan."); switchTab("lokasi"); } catch(e){} finally { loading(false); }
+}
+
+//================= MUTASI =================
+function viewMutasi(){
+  const opsAset = D.assets.filter(a=>a.Status!=="Dihapus").map(a=>`<option value="${a.ID}">${esc(a.NamaBarang)} (${esc(a.Lokasi)})</option>`).join("");
+  const opsLok = D.locations.map(l=>`<option value="${l.ID}" data-nama="${esc(l.NamaLokasi)}">${esc(l.NamaLokasi)}</option>`).join("");
+  $("view").innerHTML = `
+    ${canWrite()?`<div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 mb-4">
+      <h4 class="font-black mb-3">Catat Mutasi / Pindah Lokasi Aset</h4>
+      <select id="m-aset" class="w-full p-3 bg-slate-50 border rounded-xl mb-2"><option value="">-Pilih Aset-</option>${opsAset}</select>
+      <select id="m-lok" class="w-full p-3 bg-slate-50 border rounded-xl mb-2"><option value="">-Lokasi Tujuan-</option>${opsLok}</select>
+      <input id="m-pj" placeholder="Penanggung Jawab Baru (opsional)" class="w-full p-3 bg-slate-50 border rounded-xl mb-2">
+      <input id="m-alasan" placeholder="Alasan mutasi" class="w-full p-3 bg-slate-50 border rounded-xl mb-2">
+      <button onclick="simpanMutasi()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl w-full">Simpan Mutasi</button>
+    </div>`:""}
+    <div class="space-y-2">${(D.mutations||[]).slice().reverse().map(m=>`<div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-sm"><b>${esc(m.AsetID)}</b> → ${esc(m.LokasiTujuan)} <span class="text-slate-400">(${esc(m.Tanggal)})</span><div class="text-xs text-slate-400">${esc(m.Alasan||'')}</div></div>`).join("") || '<p class="text-sm text-slate-400">Belum ada riwayat mutasi.</p>'}</div>`;
+}
+async function simpanMutasi(){
+  const asetId = $("m-aset").value, lokSel = $("m-lok");
+  if(!asetId || !lokSel.value){ toast("Pilih aset dan lokasi tujuan.", true); return; }
+  const asetObj = D.assets.find(a=>a.ID===asetId);
+  loading(true);
+  try {
+    await api("saveMutation", { mutation:{ AsetID:asetId, LokasiAsal: asetObj?.Lokasi||"", LokasiTujuan: lokSel.selectedOptions[0].dataset.nama, PenanggungJawabBaru: $("m-pj").value.trim(), Alasan: $("m-alasan").value.trim() } });
+    await refreshAll(); toast("Mutasi tercatat."); switchTab("mutasi");
+  } catch(e){} finally { loading(false); }
+}
+
+//================= PEMINJAMAN =================
+function viewPeminjaman(){
+  const opsAset = D.assets.filter(a=>a.Status==="Aktif").map(a=>`<option value="${a.ID}">${esc(a.NamaBarang)}</option>`).join("");
+  $("view").innerHTML = `
+    ${canWrite()?`<div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 mb-4">
+      <h4 class="font-black mb-3">Catat Peminjaman</h4>
+      <select id="p-aset" class="w-full p-3 bg-slate-50 border rounded-xl mb-2"><option value="">-Pilih Aset (status Aktif)-</option>${opsAset}</select>
+      <div class="grid grid-cols-2 gap-2 mb-2"><input id="p-nama" placeholder="Nama Peminjam" class="p-3 bg-slate-50 border rounded-xl"><input id="p-jml" type="number" value="1" placeholder="Jumlah" class="p-3 bg-slate-50 border rounded-xl"></div>
+      <input id="p-keperluan" placeholder="Keperluan" class="w-full p-3 bg-slate-50 border rounded-xl mb-2">
+      <button onclick="simpanPinjam()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl w-full">Catat Peminjaman</button>
+    </div>`:""}
+    <div class="space-y-2">${(D.loans||[]).slice().reverse().map(l=>`<div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 flex justify-between items-center text-sm">
+      <div><b>${esc(l.AsetID)}</b> — ${esc(l.Peminjam)} <span class="text-[10px] font-black px-2 py-0.5 rounded-full ${l.Status==='Dipinjam'?'bg-amber-100 text-amber-700':'bg-green-100 text-green-700'}">${esc(l.Status)}</span><div class="text-xs text-slate-400">Pinjam: ${esc(l.TanggalPinjam)} ${l.TanggalKembali?('· Kembali: '+esc(l.TanggalKembali)):''}</div></div>
+      ${canWrite() && l.Status==='Dipinjam' ? `<button onclick="kembalikan('${esc(l.ID)}')" class="text-xs font-bold bg-green-50 text-green-700 px-3 py-2 rounded-lg">Kembalikan</button>` : ""}
+    </div>`).join("") || '<p class="text-sm text-slate-400">Belum ada data peminjaman.</p>'}</div>`;
+}
+async function simpanPinjam(){
+  const asetId = $("p-aset").value;
+  if(!asetId || !$("p-nama").value.trim()){ toast("Pilih aset dan isi nama peminjam.", true); return; }
+  loading(true);
+  try { await api("saveLoan", { loan:{ AsetID:asetId, Peminjam:$("p-nama").value.trim(), Jumlah:$("p-jml").value, Keperluan:$("p-keperluan").value.trim() } }); await refreshAll(); toast("Peminjaman tercatat."); switchTab("peminjaman"); } catch(e){} finally { loading(false); }
+}
+async function kembalikan(loanId){
+  loading(true);
+  try { await api("returnLoan", { loanId }); await refreshAll(); toast("Pengembalian tercatat."); switchTab("peminjaman"); } catch(e){} finally { loading(false); }
+}
+
+//================= PEMELIHARAAN =================
+function viewPemeliharaan(){
+  const opsAset = D.assets.filter(a=>a.Status!=="Dihapus").map(a=>`<option value="${a.ID}">${esc(a.NamaBarang)}</option>`).join("");
+  $("view").innerHTML = `
+    ${canWrite()?`<div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 mb-4">
+      <h4 class="font-black mb-3">Catat Pemeliharaan / Perbaikan</h4>
+      <select id="pm-aset" class="w-full p-3 bg-slate-50 border rounded-xl mb-2"><option value="">-Pilih Aset-</option>${opsAset}</select>
+      <input id="pm-jenis" placeholder="Jenis Perbaikan *" class="w-full p-3 bg-slate-50 border rounded-xl mb-2">
+      <textarea id="pm-desc" placeholder="Deskripsi" class="w-full p-3 bg-slate-50 border rounded-xl mb-2"></textarea>
+      <div class="grid grid-cols-2 gap-2 mb-2"><input id="pm-biaya" type="number" placeholder="Biaya (Rp)" class="p-3 bg-slate-50 border rounded-xl"><input id="pm-vendor" placeholder="Vendor" class="p-3 bg-slate-50 border rounded-xl"></div>
+      <button onclick="simpanPemeliharaan()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl w-full">Simpan</button>
+    </div>`:""}
+    <div class="space-y-2">${(D.maintenance||[]).slice().reverse().map(m=>`<div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-sm"><b>${esc(m.AsetID)}</b> — ${esc(m.JenisPerbaikan)} <span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200">${esc(m.Status)}</span><div class="text-xs text-slate-400">${esc(m.Tanggal)} · ${rupiah(m.Biaya)} · ${esc(m.Vendor||'-')}</div></div>`).join("") || '<p class="text-sm text-slate-400">Belum ada data pemeliharaan.</p>'}</div>`;
+}
+async function simpanPemeliharaan(){
+  const asetId = $("pm-aset").value;
+  if(!asetId || !$("pm-jenis").value.trim()){ toast("Pilih aset dan isi jenis perbaikan.", true); return; }
+  loading(true);
+  try { await api("saveMaintenance", { maintenance:{ AsetID:asetId, JenisPerbaikan:$("pm-jenis").value.trim(), Deskripsi:$("pm-desc").value.trim(), Biaya:$("pm-biaya").value, Vendor:$("pm-vendor").value.trim() } }); await refreshAll(); toast("Data pemeliharaan disimpan."); switchTab("pemeliharaan"); } catch(e){} finally { loading(false); }
+}
+
+//================= PENGHAPUSAN =================
+function viewPenghapusan(){
+  const opsAset = D.assets.filter(a=>a.Status!=="Dihapus").map(a=>`<option value="${a.ID}">${esc(a.NamaBarang)}</option>`).join("");
+  $("view").innerHTML = `
+    ${isAdmin()?`<div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 mb-4">
+      <h4 class="font-black mb-3">Usulan Penghapusan Aset</h4>
+      <select id="d-aset" class="w-full p-3 bg-slate-50 border rounded-xl mb-2"><option value="">-Pilih Aset-</option>${opsAset}</select>
+      <input id="d-alasan" placeholder="Alasan *" class="w-full p-3 bg-slate-50 border rounded-xl mb-2">
+      <select id="d-kondisi" class="w-full p-3 bg-slate-50 border rounded-xl mb-2"><option>Rusak Berat</option><option>Hilang</option><option>Usang</option></select>
+      <input id="d-nilai" type="number" placeholder="Taksiran Nilai (Rp)" class="w-full p-3 bg-slate-50 border rounded-xl mb-2">
+      <button onclick="simpanPenghapusan()" class="bg-red-700 text-white font-black px-5 py-3 rounded-xl w-full">Ajukan Penghapusan</button>
+    </div>`:""}
+    <div class="space-y-2">${(D.disposals||[]).slice().reverse().map(d=>`<div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-sm"><b>${esc(d.AsetID)}</b> — ${esc(d.Alasan)} <span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-100 text-red-700">${esc(d.Status)}</span><div class="text-xs text-slate-400">${esc(d.Tanggal)} · ${esc(d.Kondisi)}</div></div>`).join("") || '<p class="text-sm text-slate-400">Belum ada usulan penghapusan.</p>'}</div>`;
+}
+async function simpanPenghapusan(){
+  const asetId = $("d-aset").value;
+  if(!asetId || !$("d-alasan").value.trim()){ toast("Pilih aset dan isi alasan.", true); return; }
+  loading(true);
+  try { await api("saveDisposal", { disposal:{ AsetID:asetId, Alasan:$("d-alasan").value.trim(), Kondisi:$("d-kondisi").value, Nilai:$("d-nilai").value } }); await refreshAll(); toast("Usulan penghapusan disimpan."); switchTab("penghapusan"); } catch(e){} finally { loading(false); }
+}
+
+//================= PENGGUNA (ADMIN) =================
+async function viewPengguna(){
+  $("view").innerHTML = `<div class="bg-white rounded-xl p-8 text-center text-slate-400 text-sm">Memuat pengguna...</div>`;
+  let users = [];
+  try { users = (await api("getUsers")).data || []; } catch(e){}
+  $("view").innerHTML = `
+    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 mb-4">
+      <h4 class="font-black mb-3">Tambah Pengguna</h4>
+      <div class="grid md:grid-cols-2 gap-2 mb-2"><input id="u-username" placeholder="Username" class="p-3 bg-slate-50 border rounded-xl"><input id="u-nama" placeholder="Nama Lengkap" class="p-3 bg-slate-50 border rounded-xl"></div>
+      <div class="grid md:grid-cols-2 gap-2 mb-2"><input id="u-pass" placeholder="Password (default 123456)" class="p-3 bg-slate-50 border rounded-xl"><select id="u-role" class="p-3 bg-slate-50 border rounded-xl"><option>PETUGAS</option><option>ADMIN</option><option>PIMPINAN</option></select></div>
+      <button onclick="tambahUser()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl w-full">Simpan Pengguna</button>
+    </div>
+    <div class="space-y-2">${users.map(u=>`<div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 flex justify-between items-center text-sm">
+      <div><b>${esc(u.nama)}</b> <span class="text-slate-400">(${esc(u.username)})</span> · ${esc(u.role)} <span class="text-[10px] font-black px-2 py-0.5 rounded-full ${u.status==='Aktif'?'bg-green-100 text-green-700':'bg-slate-200 text-slate-600'}">${esc(u.status)}</span></div>
+      <button onclick="toggleUser('${esc(u.id)}','${u.status==='Aktif'?'Nonaktif':'Aktif'}')" class="text-xs font-bold bg-slate-100 px-3 py-2 rounded-lg">${u.status==='Aktif'?'Nonaktifkan':'Aktifkan'}</button>
+    </div>`).join("")}</div>`;
+}
+async function tambahUser(){
+  const username = $("u-username").value.trim(), nama = $("u-nama").value.trim();
+  if(!username || !nama){ toast("Username dan nama wajib diisi.", true); return; }
+  loading(true);
+  try { await api("saveUser", { user:{ username, nama, password:$("u-pass").value.trim()||"123456", role:$("u-role").value } }); toast("Pengguna ditambahkan."); viewPengguna(); } catch(e){} finally { loading(false); }
+}
+async function toggleUser(id, status){
+  loading(true);
+  try { await api("setUserStatus", { targetUserId:id, newStatus:status }); toast("Status diperbarui."); viewPengguna(); } catch(e){} finally { loading(false); }
+}
+
+//================= LAPORAN =================
+function viewLaporan(){
+  const rows = D.assets.filter(a=>a.Status!=="Dihapus");
+  $("view").innerHTML = `
+    <div class="flex justify-between items-center mb-4 noprint"><p class="text-sm text-slate-500">${rows.length} aset akan dicetak.</p><button onclick="window.print()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">🖨 Cetak Laporan</button></div>
+    <div class="bg-white rounded-2xl p-6 shadow-sm">
+      <div class="text-center mb-4"><h3 class="font-black text-lg">${esc(D.settings.NamaSekolah||'')}</h3><p class="text-xs text-slate-500">LAPORAN DATA INVENTARIS SARANA DAN PRASARANA</p></div>
+      <table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100 text-left"><th class="p-2 border">No</th><th class="p-2 border">Kode</th><th class="p-2 border">Nama Barang</th><th class="p-2 border">Kategori</th><th class="p-2 border">Lokasi</th><th class="p-2 border">Jumlah</th><th class="p-2 border">Kondisi</th><th class="p-2 border">Nilai (Rp)</th></tr></thead>
+      <tbody>${rows.map((a,i)=>`<tr><td class="p-2 border">${i+1}</td><td class="p-2 border">${esc(a.KodeBarang)}</td><td class="p-2 border">${esc(a.NamaBarang)}</td><td class="p-2 border">${esc(a.Kategori)}</td><td class="p-2 border">${esc(a.Lokasi)}</td><td class="p-2 border">${esc(a.Jumlah)} ${esc(a.Satuan)}</td><td class="p-2 border">${esc(a.Kondisi)}</td><td class="p-2 border text-right">${(Number(a.HargaPerolehan)||0).toLocaleString('id-ID')}</td></tr>`).join('')}</tbody></table>
+    </div>`;
+}
+
+//================= PENGATURAN (ADMIN) =================
+function viewPengaturan(){
+  const s = D.settings || {};
+  $("view").innerHTML = `
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 max-w-2xl">
+      <h4 class="font-black mb-4">Profil Sekolah</h4>
+      <div class="grid md:grid-cols-2 gap-3">
+        ${["NamaSekolah","AlamatSekolah","Desa","Kecamatan","Kabupaten","Provinsi","NPSN","Email","Telepon","NamaKepalaSekolah","NIPKepalaSekolah","NamaPengurusBarang","NIPPengurusBarang"].map(k=>`<div><label class="text-[11px] font-bold text-slate-500">${k}</label><input id="s-${k}" value="${esc(s[k]||'')}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>`).join("")}
+      </div>
+      <h4 class="font-black mt-6 mb-3">Logo</h4>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div><label class="text-[11px] font-bold text-slate-500">Logo Sekolah</label>${s.LogoSekolahURL?`<img src="${esc(s.LogoSekolahURL)}" class="w-16 h-16 object-cover rounded-xl my-2 border">`:''}<input id="lg-sekolah" type="file" accept="image/*" class="w-full p-2 bg-slate-50 border rounded-xl mt-1"></div>
+        <div><label class="text-[11px] font-bold text-slate-500">Logo Daerah</label>${s.LogoDaerahURL?`<img src="${esc(s.LogoDaerahURL)}" class="w-16 h-16 object-cover rounded-xl my-2 border">`:''}<input id="lg-daerah" type="file" accept="image/*" class="w-full p-2 bg-slate-50 border rounded-xl mt-1"></div>
+      </div>
+      <button onclick="simpanSettings()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl w-full mt-6">SIMPAN PENGATURAN</button>
+    </div>`;
+}
+async function simpanSettings(){
+  const keys = ["NamaSekolah","AlamatSekolah","Desa","Kecamatan","Kabupaten","Provinsi","NPSN","Email","Telepon","NamaKepalaSekolah","NIPKepalaSekolah","NamaPengurusBarang","NIPPengurusBarang"];
+  const settings = {}; keys.forEach(k => settings[k] = $("s-"+k).value.trim());
+  loading(true, "Menyimpan pengaturan...");
+  try {
+    const fs = $("lg-sekolah").files[0], fd = $("lg-daerah").files[0];
+    if(fs){ const b = await fileToBase64(fs); const up = await api("uploadFile", { fileName:fs.name, base64Data:b, folderType:"Logo" }); settings.LogoSekolahURL = up.data.fileUrl; }
+    if(fd){ const b = await fileToBase64(fd); const up = await api("uploadFile", { fileName:fd.name, base64Data:b, folderType:"Logo" }); settings.LogoDaerahURL = up.data.fileUrl; }
+    await api("saveSettings", { settings });
+    await refreshAll(); toast("Pengaturan disimpan."); switchTab("pengaturan");
+  } catch(e){} finally { loading(false); }
+}
+
+//================= SINKRONISASI =================
+function viewSinkron(){
+  $("view").innerHTML = `
+    <div class="bg-white rounded-2xl p-8 shadow-sm border border-slate-100 text-center max-w-xl mx-auto">
+      <div class="w-16 h-16 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center mx-auto mb-4"><i data-lucide="refresh-cw" class="w-8 h-8"></i></div>
+      <h3 class="font-black text-lg mb-2">Sinkronisasi Database</h3>
+      <p class="text-sm text-slate-500 mb-6">Tarik ulang seluruh data langsung dari Google Spreadsheet.</p>
+      <div class="grid grid-cols-3 gap-2 mb-6 text-left">
+        <div class="bg-slate-50 rounded-xl p-3"><p class="text-[9px] font-black text-slate-400 uppercase">Aset</p><p class="text-lg font-black">${D.assets.length}</p></div>
+        <div class="bg-slate-50 rounded-xl p-3"><p class="text-[9px] font-black text-slate-400 uppercase">Kategori</p><p class="text-lg font-black">${D.categories.length}</p></div>
+        <div class="bg-slate-50 rounded-xl p-3"><p class="text-[9px] font-black text-slate-400 uppercase">Lokasi</p><p class="text-lg font-black">${D.locations.length}</p></div>
+      </div>
+      <p class="text-xs text-blue-700 font-bold mb-4" id="sync-time">Terakhir: ${esc(D.serverTime||'-')}</p>
+      <button onclick="doSync()" class="w-full bg-blue-800 text-white font-black py-3 rounded-xl mb-3">🔄 SINKRONKAN SEKARANG</button>
+      ${isAdmin()?`<button onclick="doBackup()" class="w-full bg-slate-700 text-white font-black py-3 rounded-xl">💾 BACKUP SPREADSHEET KE DRIVE</button>`:""}
+    </div>`;
+  icons();
+}
+async function doSync(){
+  loading(true, "Menyinkronkan...");
+  try { await refreshAll(); toast("Sinkronisasi berhasil."); switchTab("sinkron"); } catch(e){} finally { loading(false); }
+}
+async function doBackup(){
+  loading(true, "Membackup spreadsheet...");
+  try { const r = await api("backupDatabase"); toast("Backup dibuat: " + r.data.backupFileName); } catch(e){} finally { loading(false); }
+}
+
+//================= ROUTER =================
+const RENDER = { dashboard:viewDashboard, aset:viewAset, kategori:viewKategori, lokasi:viewLokasi, mutasi:viewMutasi, peminjaman:viewPeminjaman, pemeliharaan:viewPemeliharaan, penghapusan:viewPenghapusan, laporan:viewLaporan, pengguna:viewPengguna, pengaturan:viewPengaturan, sinkron:viewSinkron };
+
+//================= INIT =================
+if(S && S.user){ boot(); } else { icons(); }
+</script>
+</body>
+</html>
