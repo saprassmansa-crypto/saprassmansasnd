@@ -8,12 +8,13 @@
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   body{font-family:system-ui,-apple-system,sans-serif;background:#f1f5f9;color:#1e293b;margin:0}
   .hide{display:none!important}
   ::-webkit-scrollbar{width:8px;height:8px}
   ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
-  @media print{.noprint{display:none!important} body{background:#fff}}
+  @media print{.noprint{display:none!important} body{background:#fff} .print-header{display:block!important} table{font-size:10px} thead{display:table-header-group} tr{page-break-inside:avoid} .print-signature{page-break-inside:avoid} @page{size:A4;margin:12mm}}
 </style>
 </head>
 <body>
@@ -116,6 +117,8 @@ function logout(){ S = null; sessionStorage.removeItem("sapras_session"); $("app
 const MENU = [
   { id:"dashboard", label:"Dashboard", icon:"layout-dashboard", roles:null },
   { id:"aset", label:"Data Aset", icon:"box", roles:null },
+  { id:"kib", label:"KIB", icon:"layers", roles:null },
+  { id:"kir", label:"KIR", icon:"door-open", roles:null },
   { id:"kategori", label:"Kategori", icon:"tags", roles:null },
   { id:"lokasi", label:"Lokasi", icon:"map-pin", roles:null },
   { id:"mutasi", label:"Mutasi Aset", icon:"move", roles:null },
@@ -145,7 +148,7 @@ function switchTab(tab){
   const navBtn = $("nav-"+tab), mBtn = $("mnav-"+tab);
   if(navBtn) navBtn.className = "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-white/20 text-white transition";
   if(mBtn) mBtn.className = "flex flex-col items-center justify-center min-w-[64px] py-2 text-white text-[9px] font-bold gap-1";
-  const titles = { dashboard:"Dashboard", aset:"Data Aset", kategori:"Kategori Barang", lokasi:"Data Lokasi", mutasi:"Mutasi Aset", peminjaman:"Peminjaman Aset", pemeliharaan:"Pemeliharaan Aset", penghapusan:"Usulan Penghapusan", laporan:"Laporan", pengguna:"Manajemen Pengguna", pengaturan:"Pengaturan Sekolah", sinkron:"Sinkronisasi Database" };
+  const titles = { dashboard:"Dashboard", aset:"Data Aset", kategori:"Kategori Barang", lokasi:"Data Lokasi", mutasi:"Mutasi Aset", peminjaman:"Peminjaman Aset", pemeliharaan:"Pemeliharaan Aset", penghapusan:"Usulan Penghapusan", laporan:"Laporan", pengguna:"Manajemen Pengguna", pengaturan:"Pengaturan Sekolah", sinkron:"Sinkronisasi Database", kib:"KIB – Kartu Inventaris Barang", kir:"KIR – Kartu Inventaris Ruangan" };
   $("hdr-title").textContent = titles[tab] || "Dashboard";
   $("hdr-sub").textContent = D.settings.NamaSekolah || "SMA Negeri 1 Seunuddon";
   RENDER[tab] ? RENDER[tab]() : $("view").innerHTML = "";
@@ -193,13 +196,46 @@ function viewDashboard(){
 //================= ASET =================
 function viewAset(){
   $("view").innerHTML = `
-    <div class="flex flex-wrap gap-2 mb-4 justify-between items-center">
-      <input id="q-aset" oninput="renderAsetList()" placeholder="🔍 Cari nama, kode, kategori, lokasi..." class="flex-1 min-w-[220px] p-3 bg-white border border-slate-200 rounded-xl outline-none">
-      ${canWrite() ? `<button onclick="formAset()" class="bg-blue-800 text-white font-black text-sm px-4 py-3 rounded-xl flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i>Tambah Aset</button>` : ""}
+    <div class="bg-white rounded-2xl p-3 mb-4 shadow-sm border border-slate-100 noprint">
+      <div class="flex flex-wrap gap-2">
+        <button onclick="viewAsetTab('data')" id="aset-tab-data" class="px-4 py-2 rounded-lg bg-blue-800 text-white text-sm font-black">Data Aset</button>
+        ${canWrite()?`<button onclick="viewAsetTab('import')" id="aset-tab-import" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold">Import File</button>`:""}
+        <button onclick="viewAsetTab('template')" id="aset-tab-template" class="px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold">Template</button>
+      </div>
     </div>
-    <div id="list-aset" class="space-y-2"></div>`;
-  renderAsetList(); icons();
+    <div id="aset-content"></div>`;
+  viewAsetTab('data'); icons();
 }
+function viewAsetTab(tab){
+  document.querySelectorAll('[id^="aset-tab-"]').forEach(b=>b.className='px-4 py-2 rounded-lg bg-slate-100 text-sm font-bold');
+  const active=$("aset-tab-"+tab); if(active) active.className='px-4 py-2 rounded-lg bg-blue-800 text-white text-sm font-black';
+  if(tab==='data') $("aset-content").innerHTML=`
+    <div class="flex flex-wrap gap-2 mb-4 justify-between items-center noprint"><input id="q-aset" oninput="renderAsetList()" placeholder="🔍 Cari nama, kode, kategori, lokasi..." class="flex-1 min-w-[220px] p-3 bg-white border border-slate-200 rounded-xl outline-none">${canWrite()?`<button onclick="formAset()" class="bg-blue-800 text-white font-black text-sm px-4 py-3 rounded-xl">＋ Tambah Aset</button>`:""}</div>
+    <div id="list-aset" class="space-y-2"></div>`;
+  else if(tab==='import') $("aset-content").innerHTML=`
+    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100"><h3 class="font-black text-lg mb-2">Import Data Aset</h3><p class="text-sm text-slate-500 mb-4">Upload Excel/CSV, periksa preview dan validasi, lalu konfirmasi import.</p><input id="import-file" type="file" accept=".xlsx,.xls,.csv" class="w-full p-3 bg-slate-50 border rounded-xl mb-3" onchange="previewImportFile()"><div id="import-preview"></div></div>`;
+  else $("aset-content").innerHTML=`<div class="bg-white rounded-2xl p-6 shadow-sm"><h3 class="font-black text-lg mb-2">Template Import Aset</h3><p class="text-sm text-slate-500 mb-4">Template mengikuti struktur import yang didukung aplikasi.</p><button onclick="downloadTemplate()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">⬇ Download Template Excel</button></div>`;
+  if(tab==='data') renderAsetList(); icons();
+}
+async function previewImportFile(){
+  const f=$("import-file").files[0]; if(!f) return;
+  loading(true,'Membaca file...');
+  try{
+    const data=await f.arrayBuffer(); const wb=XLSX.read(data,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
+    window._importRows=rows;
+    const keys=rows.length?Object.keys(rows[0]):[];
+    $("import-preview").innerHTML=`<div class="text-xs text-slate-500 mb-3">${rows.length} baris ditemukan. Kolom: ${keys.map(esc).join(', ')}</div><div class="overflow-auto border rounded-xl max-h-80"><table class="w-full text-xs border-collapse"><thead><tr>${keys.map(k=>`<th class="p-2 border bg-slate-100 text-left">${esc(k)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0,20).map(r=>`<tr>${keys.map(k=>`<td class="p-2 border">${esc(r[k])}</td>`).join('')}</tr>`).join('')}</tbody></table></div><button onclick="confirmImport()" class="mt-4 bg-emerald-700 text-white font-black px-5 py-3 rounded-xl">✓ Validasi & Import</button>`;
+  }catch(e){toast('File tidak dapat dibaca: '+e.message,true);}finally{loading(false)}
+}
+async function confirmImport(){
+  if(!window._importRows?.length){toast('Belum ada data import.',true);return;}
+  const c=await Swal.fire({title:'Konfirmasi Import',text:`Import ${window._importRows.length} baris ke database?`,icon:'question',showCancelButton:true,confirmButtonText:'Ya, Import',cancelButtonText:'Batal'}); if(!c.isConfirmed)return;
+  loading(true,'Mengimport data aset...'); try{const r=await api('importAssets',{rows:window._importRows}); await refreshAll(); await Swal.fire({icon:'success',title:'Import selesai',html:`Valid: <b>${r.data.valid}</b><br>Invalid: <b>${r.data.invalid}</b><br>Duplikat: <b>${r.data.duplicate}</b>`}); viewAsetTab('data');}catch(e){}finally{loading(false)}
+}
+async function downloadTemplate(){
+  const headers=(await api('getImportTemplate')).data||[]; const ws=XLSX.utils.aoa_to_sheet([headers]); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Template Aset'); XLSX.writeFile(wb,'Template_Import_Aset_SAPRAS.xlsx');
+}
+
 function renderAsetList(){
   const q = ($("q-aset").value||"").toLowerCase();
   const rows = D.assets.filter(a => a.Status !== "Dihapus" && [a.NamaBarang,a.KodeBarang,a.Kategori,a.Lokasi].join(" ").toLowerCase().includes(q));
@@ -240,6 +276,7 @@ function formAset(id){
         <div><label class="text-xs font-bold text-slate-500">Sumber Dana</label><input id="f-dana" value="${esc(a.SumberDana||'BOS')}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>
       </div>
       <div><label class="text-xs font-bold text-slate-500">Harga Perolehan (Rp)</label><input id="f-harga" type="number" value="${a.HargaPerolehan||0}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>
+      <div><label class="text-xs font-bold text-slate-500">KIB</label><select id="f-kib" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"><option value="">-Pilih KIB-</option><option value="A" ${a.KIB==='A'?'selected':''}>KIB A – Tanah</option><option value="B" ${a.KIB==='B'?'selected':''}>KIB B – Peralatan dan Mesin</option><option value="C" ${a.KIB==='C'?'selected':''}>KIB C – Gedung dan Bangunan</option><option value="D" ${a.KIB==='D'?'selected':''}>KIB D – Jalan, Irigasi dan Jaringan</option><option value="E" ${a.KIB==='E'?'selected':''}>KIB E – Aset Tetap Lainnya</option><option value="F" ${a.KIB==='F'?'selected':''}>KIB F – Konstruksi Dalam Pengerjaan</option></select></div>
       <div><label class="text-xs font-bold text-slate-500">Foto Aset</label><input id="f-foto" type="file" accept="image/*" class="w-full p-2 bg-slate-50 border rounded-xl mt-1"></div>
       <div><label class="text-xs font-bold text-slate-500">Keterangan</label><textarea id="f-ket" class="w-full p-3 bg-slate-50 border rounded-xl mt-1" rows="2">${esc(a.Keterangan||'')}</textarea></div>
       <div class="flex gap-2 pt-2"><button onclick="closeModal()" class="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100">Batal</button><button onclick="saveAset('${id||''}')" class="flex-[2] py-3 rounded-xl font-black text-white bg-blue-800">SIMPAN</button></div>
@@ -434,46 +471,27 @@ async function toggleUser(id, status){
 }
 
 //================= LAPORAN =================
-function viewLaporan(){
-  const rows = D.assets.filter(a=>a.Status!=="Dihapus");
-  $("view").innerHTML = `
-    <div class="flex justify-between items-center mb-4 noprint"><p class="text-sm text-slate-500">${rows.length} aset akan dicetak.</p><button onclick="window.print()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">🖨 Cetak Laporan</button></div>
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-      <div class="text-center mb-4"><h3 class="font-black text-lg">${esc(D.settings.NamaSekolah||'')}</h3><p class="text-xs text-slate-500">LAPORAN DATA INVENTARIS SARANA DAN PRASARANA</p></div>
-      <table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100 text-left"><th class="p-2 border">No</th><th class="p-2 border">Kode</th><th class="p-2 border">Nama Barang</th><th class="p-2 border">Kategori</th><th class="p-2 border">Lokasi</th><th class="p-2 border">Jumlah</th><th class="p-2 border">Kondisi</th><th class="p-2 border">Nilai (Rp)</th></tr></thead>
-      <tbody>${rows.map((a,i)=>`<tr><td class="p-2 border">${i+1}</td><td class="p-2 border">${esc(a.KodeBarang)}</td><td class="p-2 border">${esc(a.NamaBarang)}</td><td class="p-2 border">${esc(a.Kategori)}</td><td class="p-2 border">${esc(a.Lokasi)}</td><td class="p-2 border">${esc(a.Jumlah)} ${esc(a.Satuan)}</td><td class="p-2 border">${esc(a.Kondisi)}</td><td class="p-2 border text-right">${(Number(a.HargaPerolehan)||0).toLocaleString('id-ID')}</td></tr>`).join('')}</tbody></table>
-    </div>`;
+function reportHeader(title,subtitle){
+  const s=D.settings||{};
+  return `<div class="print-header mb-4"><div class="flex items-center justify-between gap-4 border-b-4 border-slate-800 pb-3"><div class="w-20">${s.LogoDaerahURL?`<img src="${esc(s.LogoDaerahURL)}" class="w-16 h-16 object-contain">`:''}</div><div class="flex-1 text-center"><div class="font-black text-sm">${esc(s.NamaPemerintah||'PEMERINTAH ACEH')}</div><div class="font-black text-sm">${esc(s.NamaDinas||'DINAS PENDIDIKAN ACEH')}</div><div class="font-black text-lg">${esc(s.NamaSekolah||'SMA NEGERI 1 SEUNUDDON')}</div><div class="text-[10px]">${esc(s.AlamatSekolah||'')} · ${esc(s.Email||'')}</div></div><div class="w-20 flex justify-end">${s.LogoSekolahURL?`<img src="${esc(s.LogoSekolahURL)}" class="w-16 h-16 object-contain">`:''}</div></div><div class="text-center mt-3"><h2 class="font-black text-base">${esc(title)}</h2><p class="text-xs">${esc(subtitle||'')}</p></div></div>`;
 }
+function reportSignature(){const s=D.settings||{};return `<div class="print-signature mt-10 grid grid-cols-2 gap-12 text-center text-xs"><div><p>Mengetahui,</p><p class="font-bold">Kepala Sekolah</p><div class="h-20"></div><p class="font-bold underline">${esc(s.NamaKepalaSekolah||'-')}</p><p>NIP. ${esc(s.NIPKepalaSekolah||'-')}</p></div><div><p>Menyetujui,</p><p class="font-bold">Wakil Kepala Sekolah Bidang Sarana dan Prasarana</p><div class="h-20"></div><p class="font-bold underline">${esc(s.NamaWakaSarpras||'-')}</p><p>NIP. ${esc(s.NIPWakaSarpras||'-')}</p></div></div>`;}
+function filterControls(prefix){return `<div class="bg-white rounded-2xl p-4 mb-4 shadow-sm border noprint grid md:grid-cols-4 gap-2"><select id="${prefix}-kib" class="p-3 bg-slate-50 border rounded-xl"><option value="Semua">Semua KIB</option>${['A','B','C','D','E','F'].map(x=>`<option>${x}</option>`).join('')}</select><select id="${prefix}-kat" class="p-3 bg-slate-50 border rounded-xl"><option value="Semua">Semua kategori</option>${D.categories.map(c=>`<option value="${esc(c.NamaKategori)}">${esc(c.NamaKategori)}</option>`).join('')}</select><select id="${prefix}-lok" class="p-3 bg-slate-50 border rounded-xl"><option value="Semua">Semua lokasi</option>${D.locations.map(l=>`<option value="${esc(l.NamaLokasi)}">${esc(l.NamaLokasi)}</option>`).join('')}</select><input id="${prefix}-q" placeholder="Cari..." class="p-3 bg-slate-50 border rounded-xl"><button onclick="refreshReport('${prefix}')" class="md:col-span-4 bg-blue-800 text-white font-black py-3 rounded-xl">Terapkan Filter</button></div>`;}
+function getReportFilters(prefix){return {kib:$(prefix+'-kib').value,kategori:$(prefix+'-kat').value,lokasi:$(prefix+'-lok').value,q:$(prefix+'-q').value};}
+function filteredRows(f){return D.assets.filter(a=>a.Status!=='Dihapus' && (!f.kib||f.kib==='Semua'||a.KIB===f.kib) && (!f.kategori||f.kategori==='Semua'||a.Kategori===f.kategori) && (!f.lokasi||f.lokasi==='Semua'||a.Lokasi===f.lokasi) && (!f.q||[a.KodeBarang,a.NamaBarang,a.Kategori,a.Lokasi,a.KIB].join(' ').toLowerCase().includes(f.q.toLowerCase())));}
+function viewLaporan(){
+  $("view").innerHTML=filterControls('lap')+`<div class="flex justify-between mb-3 noprint"><span id="lap-count" class="text-sm text-slate-500"></span><button onclick="window.print()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">🖨 Cetak Laporan</button></div><div id="lap-print" class="bg-white rounded-2xl p-6">${reportHeader('LAPORAN DATA INVENTARIS SARANA DAN PRASARANA','')}</div>`; refreshReport('lap'); icons();}
+function refreshReport(prefix){const rows=filteredRows(getReportFilters(prefix)); if(prefix==='lap'){$('lap-count').textContent=rows.length+' aset akan dicetak.';$('lap-print').innerHTML=reportHeader('LAPORAN DATA INVENTARIS SARANA DAN PRASARANA','')+`<table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border">No</th><th class="p-2 border">Kode</th><th class="p-2 border">Nama Barang</th><th class="p-2 border">Kategori</th><th class="p-2 border">KIB</th><th class="p-2 border">Lokasi</th><th class="p-2 border">Jumlah</th><th class="p-2 border">Kondisi</th><th class="p-2 border">Nilai</th></tr></thead><tbody>${rows.map((a,i)=>`<tr><td class="p-2 border">${i+1}</td><td class="p-2 border">${esc(a.KodeBarang)}</td><td class="p-2 border">${esc(a.NamaBarang)}</td><td class="p-2 border">${esc(a.Kategori)}</td><td class="p-2 border">${esc(a.KIB||'-')}</td><td class="p-2 border">${esc(a.Lokasi)}</td><td class="p-2 border">${esc(a.Jumlah)} ${esc(a.Satuan||'')}</td><td class="p-2 border">${esc(a.Kondisi)}</td><td class="p-2 border text-right">${(Number(a.HargaPerolehan)||0).toLocaleString('id-ID')}</td></tr>`).join('')}</tbody></table>${reportSignature()}`;}}
+function viewKIB(){ $("view").innerHTML=filterControls('kibv')+`<div class="flex justify-end mb-3 noprint"><button onclick="window.print()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">🖨 Cetak KIB</button></div><div id="kib-print" class="bg-white rounded-2xl p-6"></div>`; refreshKIB(); }
+function refreshKIB(){const rows=filteredRows(getReportFilters('kibv')); $('kib-print').innerHTML=reportHeader('KARTU INVENTARIS BARANG (KIB)',`Data aset terfilter: ${rows.length} baris`)+`<table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border">No</th><th class="p-2 border">KIB</th><th class="p-2 border">Kode</th><th class="p-2 border">Nama Barang</th><th class="p-2 border">Merk/Type</th><th class="p-2 border">Tahun</th><th class="p-2 border">Jumlah</th><th class="p-2 border">Nilai</th><th class="p-2 border">Lokasi</th><th class="p-2 border">Kondisi</th></tr></thead><tbody>${rows.map((a,i)=>`<tr><td class="p-2 border">${i+1}</td><td class="p-2 border">${esc(a.KIB||'-')}</td><td class="p-2 border">${esc(a.KodeBarang)}</td><td class="p-2 border">${esc(a.NamaBarang)}</td><td class="p-2 border">${esc((a.Merk||'')+' '+(a.Type||''))}</td><td class="p-2 border">${esc(a.TahunPerolehan)}</td><td class="p-2 border">${esc(a.Jumlah)}</td><td class="p-2 border text-right">${(Number(a.HargaPerolehan)||0).toLocaleString('id-ID')}</td><td class="p-2 border">${esc(a.Lokasi)}</td><td class="p-2 border">${esc(a.Kondisi)}</td></tr>`).join('')}</tbody></table>${reportSignature()}`; icons();}
+function viewKIR(){ $("view").innerHTML=filterControls('kirv')+`<div class="flex justify-end mb-3 noprint"><button onclick="window.print()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl">🖨 Cetak KIR</button></div><div id="kir-print" class="bg-white rounded-2xl p-6"></div>`; refreshKIR(); }
+function refreshKIR(){const rows=filteredRows(getReportFilters('kirv')); const groups={}; rows.forEach(a=>(groups[a.Lokasi||'Tanpa Lokasi']??=[]).push(a)); let html=reportHeader('KARTU INVENTARIS RUANGAN (KIR)',''); Object.entries(groups).forEach(([lok,items])=>{html+=`<div class="mb-8"><h3 class="font-black text-sm mb-2">RUANGAN/LOKASI: ${esc(lok)}</h3><table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-100"><th class="p-2 border">No</th><th class="p-2 border">Kode Barang</th><th class="p-2 border">Nama Barang</th><th class="p-2 border">Merk/Type</th><th class="p-2 border">Tahun</th><th class="p-2 border">Jumlah</th><th class="p-2 border">Kondisi</th><th class="p-2 border">Keterangan</th></tr></thead><tbody>${items.map((a,i)=>`<tr><td class="p-2 border">${i+1}</td><td class="p-2 border">${esc(a.KodeBarang)}</td><td class="p-2 border">${esc(a.NamaBarang)}</td><td class="p-2 border">${esc((a.Merk||'')+' '+(a.Type||''))}</td><td class="p-2 border">${esc(a.TahunPerolehan)}</td><td class="p-2 border">${esc(a.Jumlah)}</td><td class="p-2 border">${esc(a.Kondisi)}</td><td class="p-2 border">${esc(a.Keterangan||'')}</td></tr>`).join('')}</tbody></table></div>`}); html+=reportSignature(); $('kir-print').innerHTML=html; icons();}
 
 //================= PENGATURAN (ADMIN) =================
 function viewPengaturan(){
-  const s = D.settings || {};
-  $("view").innerHTML = `
-    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 max-w-2xl">
-      <h4 class="font-black mb-4">Profil Sekolah</h4>
-      <div class="grid md:grid-cols-2 gap-3">
-        ${["NamaSekolah","AlamatSekolah","Desa","Kecamatan","Kabupaten","Provinsi","NPSN","Email","Telepon","NamaKepalaSekolah","NIPKepalaSekolah","NamaPengurusBarang","NIPPengurusBarang"].map(k=>`<div><label class="text-[11px] font-bold text-slate-500">${k}</label><input id="s-${k}" value="${esc(s[k]||'')}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>`).join("")}
-      </div>
-      <h4 class="font-black mt-6 mb-3">Logo</h4>
-      <div class="grid md:grid-cols-2 gap-4">
-        <div><label class="text-[11px] font-bold text-slate-500">Logo Sekolah</label>${s.LogoSekolahURL?`<img src="${esc(s.LogoSekolahURL)}" class="w-16 h-16 object-cover rounded-xl my-2 border">`:''}<input id="lg-sekolah" type="file" accept="image/*" class="w-full p-2 bg-slate-50 border rounded-xl mt-1"></div>
-        <div><label class="text-[11px] font-bold text-slate-500">Logo Daerah</label>${s.LogoDaerahURL?`<img src="${esc(s.LogoDaerahURL)}" class="w-16 h-16 object-cover rounded-xl my-2 border">`:''}<input id="lg-daerah" type="file" accept="image/*" class="w-full p-2 bg-slate-50 border rounded-xl mt-1"></div>
-      </div>
-      <button onclick="simpanSettings()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl w-full mt-6">SIMPAN PENGATURAN</button>
-    </div>`;
-}
-async function simpanSettings(){
-  const keys = ["NamaSekolah","AlamatSekolah","Desa","Kecamatan","Kabupaten","Provinsi","NPSN","Email","Telepon","NamaKepalaSekolah","NIPKepalaSekolah","NamaPengurusBarang","NIPPengurusBarang"];
-  const settings = {}; keys.forEach(k => settings[k] = $("s-"+k).value.trim());
-  loading(true, "Menyimpan pengaturan...");
-  try {
-    const fs = $("lg-sekolah").files[0], fd = $("lg-daerah").files[0];
-    if(fs){ const b = await fileToBase64(fs); const up = await api("uploadFile", { fileName:fs.name, base64Data:b, folderType:"Logo" }); settings.LogoSekolahURL = up.data.fileUrl; }
-    if(fd){ const b = await fileToBase64(fd); const up = await api("uploadFile", { fileName:fd.name, base64Data:b, folderType:"Logo" }); settings.LogoDaerahURL = up.data.fileUrl; }
-    await api("saveSettings", { settings });
-    await refreshAll(); toast("Pengaturan disimpan."); switchTab("pengaturan");
-  } catch(e){} finally { loading(false); }
-}
+  const s=D.settings||{};
+  $("view").innerHTML=`<div class="bg-white rounded-2xl p-6 shadow-sm border max-w-3xl"><h4 class="font-black mb-4">Identitas Sekolah</h4><div class="grid md:grid-cols-2 gap-3">${['NamaPemerintah','NamaDinas','NamaSekolah','AlamatSekolah','Desa','Kecamatan','Kabupaten','Provinsi','NPSN','Email','Telepon','NamaKepalaSekolah','NIPKepalaSekolah','NamaWakaSarpras','NIPWakaSarpras','NamaPengurusBarang','NIPPengurusBarang'].map(k=>`<div><label class="text-[11px] font-bold text-slate-500">${k}</label><input id="s-${k}" value="${esc(s[k]||'')}" class="w-full p-3 bg-slate-50 border rounded-xl mt-1"></div>`).join('')}</div><h4 class="font-black mt-6 mb-3">Logo</h4><div class="grid md:grid-cols-2 gap-4"><div><label class="text-[11px] font-bold">Logo Sekolah</label>${s.LogoSekolahURL?`<img src="${esc(s.LogoSekolahURL)}" class="w-20 h-20 object-contain rounded-xl my-2 border">`:''}<input id="lg-sekolah" type="file" accept="image/*" class="w-full p-2 bg-slate-50 border rounded-xl"></div><div><label class="text-[11px] font-bold">Logo Daerah</label>${s.LogoDaerahURL?`<img src="${esc(s.LogoDaerahURL)}" class="w-20 h-20 object-contain rounded-xl my-2 border">`:''}<input id="lg-daerah" type="file" accept="image/*" class="w-full p-2 bg-slate-50 border rounded-xl"></div></div><button onclick="simpanSettings()" class="bg-blue-800 text-white font-black px-5 py-3 rounded-xl w-full mt-6">SIMPAN PENGATURAN</button></div>`; icons();}
+async function simpanSettings(){const keys=['NamaPemerintah','NamaDinas','NamaSekolah','AlamatSekolah','Desa','Kecamatan','Kabupaten','Provinsi','NPSN','Email','Telepon','NamaKepalaSekolah','NIPKepalaSekolah','NamaWakaSarpras','NIPWakaSarpras','NamaPengurusBarang','NIPPengurusBarang'];const settings={};keys.forEach(k=>settings[k]=$("s-"+k).value.trim());loading(true,'Menyimpan pengaturan...');try{const fs=$("lg-sekolah").files[0],fd=$("lg-daerah").files[0];if(fs){const b=await fileToBase64(fs);const up=await api('uploadFile',{fileName:fs.name,base64Data:b,folderType:'Logo'});settings.LogoSekolahURL=up.data.fileUrl;}if(fd){const b=await fileToBase64(fd);const up=await api('uploadFile',{fileName:fd.name,base64Data:b,folderType:'Logo'});settings.LogoDaerahURL=up.data.fileUrl;}await api('saveSettings',{settings});await refreshAll();toast('Pengaturan disimpan.');switchTab('pengaturan');}catch(e){}finally{loading(false)}}
 
 //================= SINKRONISASI =================
 function viewSinkron(){
@@ -503,7 +521,7 @@ async function doBackup(){
 }
 
 //================= ROUTER =================
-const RENDER = { dashboard:viewDashboard, aset:viewAset, kategori:viewKategori, lokasi:viewLokasi, mutasi:viewMutasi, peminjaman:viewPeminjaman, pemeliharaan:viewPemeliharaan, penghapusan:viewPenghapusan, laporan:viewLaporan, pengguna:viewPengguna, pengaturan:viewPengaturan, sinkron:viewSinkron };
+const RENDER = { dashboard:viewDashboard, aset:viewAset, kib:viewKIB, kir:viewKIR, kategori:viewKategori, lokasi:viewLokasi, mutasi:viewMutasi, peminjaman:viewPeminjaman, pemeliharaan:viewPemeliharaan, penghapusan:viewPenghapusan, laporan:viewLaporan, pengguna:viewPengguna, pengaturan:viewPengaturan, sinkron:viewSinkron };
 
 //================= INIT =================
 if(S && S.user){ boot(); } else { icons(); }
