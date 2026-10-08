@@ -9,7 +9,7 @@
 const CONFIG = {
   // Ganti dengan ID Spreadsheet Anda jika menggunakan database terpisah
   // Atau biarkan kosong untuk menggunakan Spreadsheet tempat skrip ini terpasang (jika container-bound)
-  SPREADSHEET_ID: "", 
+  SPREADSHEET_ID: "1af7oglFHIvqt3v0zdR5dGbqA-FiXwQY1txkJdhkKYvc", 
   ROOT_FOLDER_ID: "", // ID Folder Root Drive (dibuat otomatis oleh setupDrive)
   TIMEZONE: "Asia/Jakarta",
   APP_NAME: "SAPRAS SMA NEGERI 1 SEUNUDDON",
@@ -146,6 +146,22 @@ function doPost(e) {
       case "getAssets":
         return jsonResponse(getAssetsData());
 
+      case "getKIBList":
+        return jsonResponse(getKIBList());
+
+      case "getKIBData":
+        return jsonResponse(getKIBData(payload.filters || {}));
+
+      case "getKIRData":
+        return jsonResponse(getKIRData(payload.filters || {}));
+
+      case "getImportTemplate":
+        return jsonResponse(getImportTemplateData());
+
+      case "importAssets":
+        requireRole(["ADMIN", "PETUGAS"]);
+        return jsonResponse(importAssetsData(payload.rows, userId, userName), "success", "Import aset selesai.");
+
       case "getAssetById":
         return jsonResponse(getAssetByIdData(payload.id));
 
@@ -266,7 +282,7 @@ function setupDatabase() {
     "ID", "KodeBarang", "NamaBarang", "KategoriID", "Kategori", "NUP", "Merk", "Type",
     "Spesifikasi", "TahunPerolehan", "SumberDana", "HargaPerolehan", "Jumlah", "Satuan",
     "Kondisi", "Status", "LokasiID", "Lokasi", "PenanggungJawab", "TanggalInput", "InputBy",
-    "UpdatedAt", "FotoFileID", "FotoURL", "Keterangan"
+    "UpdatedAt", "FotoFileID", "FotoURL", "Keterangan", "KIB"
   ]);
 
   ensureSheetWithHeaders(ss, SHEETS.KATEGORI, [
@@ -311,11 +327,16 @@ function ensureSheetWithHeaders(ss, sheetName, headers) {
   }
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(headers);
-    const range = sheet.getRange(1, 1, 1, headers.length);
-    range.setFontWeight("bold");
-    range.setBackground("#1e3a8a");
-    range.setFontColor("#ffffff");
+  } else {
+    const existing = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+    headers.forEach(h => {
+      if (!existing.includes(h)) sheet.getRange(1, sheet.getLastColumn() + 1).setValue(h);
+    });
   }
+  const range = sheet.getRange(1, 1, 1, sheet.getLastColumn());
+  range.setFontWeight("bold");
+  range.setBackground("#1e3a8a");
+  range.setFontColor("#ffffff");
   return sheet;
 }
 
@@ -337,6 +358,10 @@ function seedInitialData(ss) {
       ["NIPKepalaSekolah", "19680512 199412 1 002", getTimestamp()],
       ["NamaPengurusBarang", "Iskandar, S.Pd.", getTimestamp()],
       ["NIPPengurusBarang", "19820315 200801 1 007", getTimestamp()],
+      ["NamaDinas", "DINAS PENDIDIKAN ACEH", getTimestamp()],
+      ["NamaPemerintah", "PEMERINTAH ACEH", getTimestamp()],
+      ["NamaWakaSarpras", "", getTimestamp()],
+      ["NIPWakaSarpras", "", getTimestamp()],
       ["LogoSekolahURL", "https://images.unsplash.com/photo-1594608661623-aa0bd3a69d98?w=160&q=80", getTimestamp()],
       ["LogoDaerahURL", "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=160&q=80", getTimestamp()],
       ["GoogleDriveFolderId", CONFIG.ROOT_FOLDER_ID || "", getTimestamp()]
@@ -573,7 +598,7 @@ function saveAssetData(asset, userId, userName) {
     Number(asset.HargaPerolehan) || 0, Number(asset.Jumlah) || 1, asset.Satuan || "Unit",
     asset.Kondisi || "Baik", asset.Status || "Aktif", asset.LokasiID || "",
     asset.Lokasi, asset.PenanggungJawab || "", now, userName, now,
-    asset.FotoFileID || "", asset.FotoURL || "", asset.Keterangan || ""
+    asset.FotoFileID || "", asset.FotoURL || "", asset.Keterangan || "", asset.KIB || ""
   ]);
   addAuditLog(userId, userName, "TAMBAH_ASET", "Aset", newId, "Aset baru: " + asset.NamaBarang);
   return { id: newId };
@@ -609,6 +634,8 @@ function updateAssetData(asset, userId, userName) {
   sheet.getRange(rowIdx, 22).setValue(now);
   if (asset.FotoURL) sheet.getRange(rowIdx, 24).setValue(asset.FotoURL);
   sheet.getRange(rowIdx, 25).setValue(asset.Keterangan || "");
+  const kibCol = getHeaderColumn(sheet, "KIB");
+  if (kibCol) sheet.getRange(rowIdx, kibCol).setValue(asset.KIB || "");
   addAuditLog(userId, userName, "UBAH_ASET", "Aset", asset.ID, "Perbarui aset: " + asset.NamaBarang);
   return { id: asset.ID };
 }
@@ -626,6 +653,92 @@ function deleteAssetData(id, userId, userName) {
     }
   }
   throw new Error("Aset tidak ditemukan.");
+}
+
+
+function getHeaderColumn(sheet, headerName) {
+  const lastCol = sheet.getLastColumn();
+  if (!lastCol) return 0;
+  const headers = sheet.getRange(1,1,1,lastCol).getValues()[0].map(String);
+  const idx = headers.indexOf(headerName);
+  return idx >= 0 ? idx + 1 : 0;
+}
+
+function getKIBList() {
+  return [
+    {code:"A", name:"KIB A – Tanah"},
+    {code:"B", name:"KIB B – Peralatan dan Mesin"},
+    {code:"C", name:"KIB C – Gedung dan Bangunan"},
+    {code:"D", name:"KIB D – Jalan, Irigasi dan Jaringan"},
+    {code:"E", name:"KIB E – Aset Tetap Lainnya"},
+    {code:"F", name:"KIB F – Konstruksi Dalam Pengerjaan"}
+  ];
+}
+
+function filterAssetData(filters) {
+  const f = filters || {};
+  return getAssetsData().filter(a => {
+    if (a.Status === "Dihapus") return false;
+    if (f.kib && f.kib !== "Semua" && String(a.KIB || "") !== String(f.kib)) return false;
+    if (f.kategori && f.kategori !== "Semua" && String(a.KategoriID || a.Kategori || "") !== String(f.kategori)) return false;
+    if (f.tahun && f.tahun !== "Semua" && String(a.TahunPerolehan || "") !== String(f.tahun)) return false;
+    if (f.lokasi && f.lokasi !== "Semua" && String(a.LokasiID || a.Lokasi || "") !== String(f.lokasi)) return false;
+    const q = String(f.q || "").trim().toLowerCase();
+    if (q && ![a.ID,a.KodeBarang,a.NamaBarang,a.Kategori,a.Lokasi,a.Merk,a.Type,a.KIB].join(" ").toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function getKIBData(filters) {
+  const rows = filterAssetData(filters);
+  const by = {};
+  getKIBList().forEach(k => by[k.code] = {code:k.code,name:k.name,items:[],total:0});
+  rows.forEach(a => { const k = String(a.KIB || "").trim().toUpperCase(); if (by[k]) { by[k].items.push(a); by[k].total += Number(a.Jumlah)||0; } });
+  return by;
+}
+
+function getKIRData(filters) {
+  const rows = filterAssetData(filters);
+  const by = {};
+  rows.forEach(a => {
+    const key = String(a.Lokasi || "Tanpa Lokasi");
+    if (!by[key]) by[key] = {lokasi:key,items:[],total:0};
+    by[key].items.push(a); by[key].total += Number(a.Jumlah)||0;
+  });
+  return by;
+}
+
+function normalizeImportValue(v) {
+  if (v === null || v === undefined) return "";
+  if (v instanceof Date) return Utilities.formatDate(v, CONFIG.TIMEZONE, "yyyy-MM-dd");
+  return String(v).trim();
+}
+
+function importAssetsData(rows, userId, userName) {
+  if (!Array.isArray(rows) || !rows.length) throw new Error("Tidak ada data untuk diimport.");
+  const ss = getSpreadsheet(), sheet = ss.getSheetByName(SHEETS.ASET);
+  const headers = sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(String);
+  const existing = sheet.getDataRange().getValues();
+  const kodeSet = new Set(existing.slice(1).filter(r=>String(r[15]||"")!=="Dihapus").map(r=>String(r[1]||"").trim().toLowerCase()).filter(Boolean));
+  const aliases = {"Kode Barang":"KodeBarang","Nama Barang":"NamaBarang","Kategori":"Kategori","KIB":"KIB","Merk/Type":"Merk","Merk":"Merk","Type":"Type","Nomor Seri":"NUP","Tahun Perolehan":"TahunPerolehan","Sumber Dana":"SumberDana","Harga/Nilai":"HargaPerolehan","Harga":"HargaPerolehan","Jumlah":"Jumlah","Kondisi":"Kondisi","Ruangan/Lokasi":"Lokasi","Lokasi":"Lokasi","Keterangan":"Keterangan"};
+  let valid=0, invalid=0, duplicate=0; const errors=[]; const out=[];
+  rows.forEach((raw,idx)=>{
+    const a={}; Object.keys(raw||{}).forEach(k=>{ const dest=aliases[k]||k; a[dest]=normalizeImportValue(raw[k]); });
+    if (!a.NamaBarang) { invalid++; errors.push({row:idx+2,error:"NamaBarang kosong"}); return; }
+    if (a.KIB && !["A","B","C","D","E","F"].includes(a.KIB.toUpperCase())) { invalid++; errors.push({row:idx+2,error:"KIB harus A-F"}); return; }
+    const kode=String(a.KodeBarang||"").trim().toLowerCase();
+    if(kode && kodeSet.has(kode)){ duplicate++; errors.push({row:idx+2,error:"Kode Barang sudah ada"}); return; }
+    const id="AST-"+Utilities.formatDate(new Date(),CONFIG.TIMEZONE,"yyyyMMddHHmmss")+"-"+Math.floor(1000+Math.random()*9000);
+    const row=headers.map(h=>{ if(h==="ID") return id; if(h==="KategoriID") return ""; if(h==="Kategori") return a.Kategori||""; if(h==="LokasiID") return ""; if(h==="Lokasi") return a.Lokasi||""; if(h==="Status") return "Aktif"; if(h==="TanggalInput") return getTimestamp(); if(h==="InputBy") return userName; if(h==="UpdatedAt") return getTimestamp(); if(h==="FotoFileID"||h==="FotoURL") return ""; if(h==="KIB") return a.KIB||""; if(h==="KodeBarang") return a.KodeBarang||("KD-"+Math.floor(100000+Math.random()*900000)); if(h==="Jumlah") return Number(a.Jumlah)||1; if(h==="HargaPerolehan") return Number(String(a.HargaPerolehan||0).replace(/[^0-9.-]/g,""))||0; if(h==="Kondisi") return a.Kondisi||"Baik"; if(h==="Satuan") return a.Satuan||"Unit"; if(h==="TahunPerolehan") return a.TahunPerolehan||new Date().getFullYear(); return a[h]||""; });
+    out.push(row); valid++; if(kode) kodeSet.add(kode);
+  });
+  if(out.length) sheet.getRange(sheet.getLastRow()+1,1,out.length,headers.length).setValues(out);
+  addAuditLog(userId,userName,"IMPORT_ASET","Aset","IMPORT",`Import aset: ${valid} valid, ${invalid} invalid, ${duplicate} duplikat.`);
+  return {valid,invalid,duplicate,errors,imported:out.length};
+}
+
+function getImportTemplateData() {
+  return ["Kode Barang","Nama Barang","Kategori","KIB","Merk/Type","Nomor Seri","Tahun Perolehan","Sumber Dana","Harga/Nilai","Jumlah","Kondisi","Ruangan/Lokasi","Keterangan"];
 }
 
 function getCategoriesData() {
